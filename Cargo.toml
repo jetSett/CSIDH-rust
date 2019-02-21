@@ -1,0 +1,13 @@
+[package]
+name = "CSIDH"
+version = "0.1.0"
+authors = ["jetSett <joel.felderhoff@ens-lyon.fr>"]
+edition = "2018"
+
+[dependencies.elliptic_curve_algorithms]
+path="../Elliptic-curve-algorithms/"
+
+[dependencies]
+time = "0.1.42"
+rust-gmp = "0.5.0"
+rand = "0.6.5"
