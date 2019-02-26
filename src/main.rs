@@ -4,17 +4,25 @@ use time;
 
 mod csidh;
 
+use elliptic_curve_algorithms::finite_fields::*;
+
 use csidh::*;
+
+elliptic_curve_algorithms::declare_finite_field!(K, Integer, 
+            Integer::from_str_radix("5326738796327623094747867617954605554069371494832722337612446642054009560026576537626892113026381253624626941643949444792662881241621373288942880288065659", 10).unwrap(), 
+            _m);
+
+type PublicKey = K;
+type SecretKey = Vec<i32>;
 
 fn main() {
     let gen_param = 1;
 
     let mut current : u64;
 
-    let inst = CSIDHInstance{
-        n_primes: 74,
-        p: Integer::from_str_radix("5326738796327623094747867617954605554069371494832722337612446642054009560026576537626892113026381253624626941643949444792662881241621373288942880288065659", 10).unwrap(),
-        l: vec![Integer::from(3),Integer::from(5),Integer::from(7),
+    let inst : CSIDHInstance<K> = CSIDHInstance::new(74,
+        Integer::from_str_radix("5326738796327623094747867617954605554069371494832722337612446642054009560026576537626892113026381253624626941643949444792662881241621373288942880288065659", 10).unwrap(),
+        vec![Integer::from(3),Integer::from(5),Integer::from(7),
                 Integer::from(11),Integer::from(13),Integer::from(17),
                 Integer::from(19),Integer::from(23),Integer::from(29),
                 Integer::from(31),Integer::from(37),Integer::from(41),
@@ -39,29 +47,29 @@ fn main() {
                 Integer::from(337),Integer::from(347),Integer::from(349),
                 Integer::from(353),Integer::from(359),Integer::from(367),
                 Integer::from(373),Integer::from(587)]
-    };
+    );
 
-    check_well_defined(&inst);
+    inst.check_well_defined();
     println!("Everything is well defined");
 
     current = time::precise_time_ns();
-    let (pk_a, sk_a) = sample_keys(&inst, gen_param);
+    let (pk_a, sk_a) = inst.sample_keys(gen_param);
     let time_gen_a = (time::precise_time_ns()-current)/1000000;
     println!("Alice's public key: {} ({} ms)", pk_a, time_gen_a);
 
     current = time::precise_time_ns();
-    let (pk_b, sk_b) = sample_keys(&inst, gen_param);
+    let (pk_b, sk_b) = inst.sample_keys(gen_param);
     let time_gen_b = (time::precise_time_ns()-current)/1000000;
     println!("Bob's public key: {} ({} ms)", pk_b, time_gen_b);
 
     current = time::precise_time_ns();
-    let shared_a = class_group_action(&inst, pk_b, sk_a);
+    let shared_a = inst.class_group_action(pk_b, sk_a);
     let time_shared_a = (time::precise_time_ns()-current)/1000000;
     println!("Alice's shared secret: {} ({} ms)", shared_a, time_shared_a);
 
 
     current = time::precise_time_ns();
-    let shared_b = class_group_action(&inst, pk_a, sk_b);
+    let shared_b = inst.class_group_action(pk_a, sk_b);
     let time_shared_b = (time::precise_time_ns()-current)/1000000;
     println!("Bob's shared secret: {} ({} ms)", shared_b, time_shared_b);
 
