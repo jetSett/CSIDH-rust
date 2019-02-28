@@ -46,12 +46,12 @@ pub fn secret_share_demo(gen_param : i32){
     println!("Everything is well defined");
 
     current = time::precise_time_ns();
-    let (pk_a, sk_a) = inst.sample_keys(gen_param);
+    let (pk_a, sk_a) = inst.sample_keys_modif(gen_param);
     let time_gen_a = (time::precise_time_ns()-current)/1000000;
     println!("Alice's public key: {} ({} ms)", pk_a, time_gen_a);
 
     current = time::precise_time_ns();
-    let (pk_b, sk_b) = inst.sample_keys(gen_param);
+    let (pk_b, sk_b) = inst.sample_keys_modif(gen_param);
     let time_gen_b = (time::precise_time_ns()-current)/1000000;
     println!("Bob's public key: {} ({} ms)", pk_b, time_gen_b);
 
