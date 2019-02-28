@@ -316,6 +316,24 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
         (pk, sk)
     }
 
+    pub fn sample_keys_modif(self : &CSIDHInstance<K>, bound : i32) -> (K, Vec<i32>){
+        let mut rng = rand::thread_rng();
+        let N_PRIMES = self.n_primes;
+        let mut sk : Vec<i32> = vec!();
+        for i in 0..N_PRIMES{
+            let l_int : i32 = self.l[i].clone().to_str_radix(10).parse().unwrap();
+            let m = bound/l_int;
+            if m > 0{
+                sk.push(rng.gen_range(-m, m) as i32);
+            }else{
+                sk.push(0);
+            }
+        }
+
+        let pk = self.class_group_action(K::from_int(0), sk.clone());
+        (pk, sk)
+    }
+
 }
 
 #[cfg(test)]

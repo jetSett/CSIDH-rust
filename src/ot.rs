@@ -31,8 +31,8 @@ struct Alice<'a>{
 
 impl<'a> Alice<'a> {
     fn step_1(inst : &'a CSIDHInstance<K>, gen_param : i32) -> Alice<'a>{
-        let k0 = inst.sample_keys(gen_param);
-        let k1 = inst.sample_keys(gen_param);
+        let k0 = inst.sample_keys_modif(gen_param);
+        let k1 = inst.sample_keys_modif(gen_param);
 
         Alice{
             pk0: k0.0,
