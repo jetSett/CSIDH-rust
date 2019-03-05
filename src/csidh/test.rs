@@ -146,7 +146,7 @@ fn isogeny_kernel(){
             continue;
         }
 
-        let (_, q) = CSIDHInstance::isogeny(&ell, &p, p.clone(), inst.l[j].clone()).unwrap();
+        let (_, q) = CSIDHInstance::isogeny_velu(&ell, &p, p.clone(), inst.l[j].clone()).unwrap();
         assert_eq!(UnsignedProjPoint::infinite_point(), q);
     }
 }

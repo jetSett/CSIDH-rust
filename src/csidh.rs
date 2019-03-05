@@ -4,11 +4,14 @@ use rand::Rng;
 
 use elliptic_curve_algorithms::field::*;
 
-use elliptic_curve_algorithms::finite_fields::FiniteField;
-
 #[macro_use] use elliptic_curve_algorithms;
+use elliptic_curve_algorithms::finite_fields::{Fp, IntegerAsType};
+use elliptic_curve_algorithms::finite_fields::integer_mpz::*;
+
 use elliptic_curve_algorithms::elliptic_curves::*;
 use elliptic_curve_algorithms::elliptic_curves::fp_elliptic_curves::*;
+
+use elliptic_curve_algorithms::finite_fields::FiniteField;
 
 pub type Integer = gmp::mpz::Mpz;
 
@@ -22,9 +25,16 @@ pub struct CSIDHInstance<K>{
 }
 
 
-impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
+impl<N> CSIDHInstance<Fp<N, Integer>>
+where N : IntegerAsType<Integer>{
 
-    pub fn new(n_primes : usize, p: Integer, l: PrimeList) -> CSIDHInstance<K>{
+    fn compute_rhs(x : &Fp<N, Integer>, a : &Fp<N, Integer>) -> Fp<N, Integer>{
+        let x_sq = x*x;
+        let y = &x_sq*x  + a*&x_sq;
+        &y + x
+    }
+
+    pub fn new(n_primes : usize, p: Integer, l: PrimeList) -> CSIDHInstance<Fp<N, Integer>>{
         CSIDHInstance{
             data: PhantomData,
             n_primes,
@@ -32,7 +42,7 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
         }
     }
 
-    pub fn check_well_defined(self : &CSIDHInstance<K>){
+    pub fn check_well_defined(self : &CSIDHInstance<Fp<N, Integer>>){
         let L = &self.l;
         let P = &self.p;
         let N_PRIMES = self.n_primes;
@@ -43,11 +53,11 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
         for i in 0..N_PRIMES{
             prod *= L[i].clone();
         }
-        assert_eq!(*P, K::cardinal());
+        assert_eq!(*P, Fp::<N, Integer>::cardinal());
         assert_eq!(*P, Integer::from(4)*prod-Integer::from(1));
     }
 
-    fn is_supersingular(self : &CSIDHInstance<K>, ell : &EllipticCurve<K>) -> bool{
+    fn is_supersingular(self : &CSIDHInstance<Fp<N, Integer>>, ell : &EllipticCurve<Fp<N, Integer>>) -> bool{
         let L = &self.l;
         let P = &self.p;
         let N_PRIMES = self.n_primes;
@@ -74,7 +84,7 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
         }
     }
 
-    fn order_naive(ell : &EllipticCurve<K>, p : &UnsignedProjPoint<K>) -> Integer{
+    fn order_naive(ell : &EllipticCurve<Fp<N, Integer>>, p : &UnsignedProjPoint<Fp<N, Integer>>) -> Integer{
         assert!(ell.is_montgomery());
 
         if p == &UnsignedProjPoint::infinite_point(){
@@ -100,36 +110,36 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
         order
     }
 
-    fn isogeny(ell : &EllipticCurve<K>, point : &UnsignedProjPoint<K>, mut q : UnsignedProjPoint<K>, k : Integer) -> Result<(EllipticCurve<K>, UnsignedProjPoint<K>), ()>{
+    fn isogeny_velu(ell : &EllipticCurve<Fp<N, Integer>>, point : &UnsignedProjPoint<Fp<N, Integer>>, mut q : UnsignedProjPoint<Fp<N, Integer>>, k : Integer) -> Result<(EllipticCurve<Fp<N, Integer>>, UnsignedProjPoint<Fp<N, Integer>>), ()>{
         assert!(ell.is_montgomery());
         assert!(k>=Integer::from(3));
         assert!(&k%2 != Integer::from(0));
 
-        let p = point.clone();
+        let p = point;
 
         let mut i = Integer::from(1);
         
         let mut t = p.clone();  // t = [i]p will iterate over elements of <p>
         let mut t_minus_1 = UnsignedProjPoint::infinite_point();
 
-        let mut pi = UnsignedProjPoint::finite_point(K::from_int(1));
-        let mut sigma = K::from_int(0);
+        let mut pi = UnsignedProjPoint::finite_point(Fp::from_int(1));
+        let mut sigma = Fp::from_int(0);
         
-        let mut projection_x = K::from_int(1);
-        let mut projection_z = K::from_int(1);
+        let mut projection_x = Fp::from_int(1);
+        let mut projection_z = Fp::from_int(1);
 
         while &Integer::from(2)*&i < k{
-            if t.x == K::from_int(0){ // point of order 2, we abort
+            if t.x == Fp::from_int(0){ // point of order 2, we abort
                 return Err(());
             }
 
             pi.x *= t.x.clone();
             pi.z *= t.z.clone();
 
-            sigma += t.x.clone()/t.z.clone() - t.z.clone()/t.x.clone();
+            sigma += (&t.x*&t.x - &t.z*&t.z)/(&t.z*&t.x);
 
-            projection_x *= t.x.clone()*q.x.clone() - t.z.clone()*q.z.clone();
-            projection_z *= q.x.clone()*t.z.clone() - t.x.clone()*q.z.clone();
+            projection_x *= &t.x*&q.x - &t.z*&q.z;
+            projection_z *= &q.x*&t.z - &t.x*&q.z;
 
             if i == Integer::from(1){
                 let _temp = t.clone();
@@ -149,11 +159,11 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
         projection_x *= projection_x.clone();
         projection_z *= projection_z.clone();
 
-        sigma *= K::from_int(2);
+        sigma *= Fp::from_int(2);
 
         pi = pi.normalize();
         Ok((
-            EllipticCurve::new_montgomery(pi.x*(ell.a_2.clone() - (K::from_int(3)*sigma))),
+            EllipticCurve::new_montgomery(pi.x*(&ell.a_2 - &(Fp::from_int(3)*sigma))),
             UnsignedProjPoint{
                     x: q.x*projection_x,
                     z: q.z*projection_z
@@ -162,11 +172,11 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
 
     }
 
-    pub fn verify_public_key(self : &CSIDHInstance<K>, pk : K) -> bool{
+    pub fn verify_public_key(self : &CSIDHInstance<Fp<N, Integer>>, pk : Fp<N, Integer>) -> bool{
         self.is_supersingular(&EllipticCurve::new_montgomery(pk))
     }
 
-    pub fn naive_class_group_action(self : &CSIDHInstance<K>, pk : K, sk : Vec<i32>) -> K{
+    pub fn naive_class_group_action(self : &CSIDHInstance<Fp<N, Integer>>, pk : Fp<N, Integer>, sk : Vec<i32>) -> Fp<N, Integer>{
         let L = &self.l;
         let P = &self.p;
         let N_PRIMES = &self.n_primes;
@@ -182,23 +192,19 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
             let s = if sk[i]>0{ 1 } else { -1 };
 
             for _j in 0..(s*sk[i]){
-                let compute_rhs = | x : K | {
-                ( (x.clone()*x.clone())*x.clone()  + ((ell.a_2.clone())*x.clone())*x.clone() )+ x 
-                };
-
-                let mut x = K::new(Integer::sample_uniform(&Integer::from(0), &(P-Integer::from(1))));
+                let mut x = Fp::new(Integer::sample_uniform(&Integer::from(0), &(P-Integer::from(1))));
                 let mut p_point = UnsignedProjPoint::finite_point(x.clone());
 
                 let mut q_point = ell.scalar_mult_unsigned(p_plus_1.clone()/L[i].clone(), p_point.clone());
 
-                while compute_rhs(x.clone()).legendre_symbol() != s as i8 || q_point == UnsignedProjPoint::infinite_point() {
-                    x = K::new(Integer::sample_uniform(&Integer::from(0), &(P-Integer::from(1))));
+                while CSIDHInstance::compute_rhs(&x, &ell.a_2).legendre_symbol() != s as i8 || q_point == UnsignedProjPoint::infinite_point() {
+                    x = Fp::new(Integer::sample_uniform(&Integer::from(0), &(P-Integer::from(1))));
 
                     p_point = UnsignedProjPoint::finite_point(x.clone());
                     q_point = ell.scalar_mult_unsigned(p_plus_1.clone()/L[i].clone(), p_point);
                 }
 
-                let (ell_, _) = Self::isogeny(&ell, &q_point, q_point.clone(), L[i].clone()).unwrap();
+                let (ell_, _) = Self::isogeny_velu(&ell, &q_point, q_point.clone(), L[i].clone()).unwrap();
                 ell = ell_;
             }
 
@@ -206,7 +212,7 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
         ell.a_2
     }
 
-    pub fn class_group_action(self : &CSIDHInstance<K>, pk : K, mut sk : Vec<i32>) -> K{
+    pub fn class_group_action(self : &CSIDHInstance<Fp<N, Integer>>, pk : Fp<N, Integer>, mut sk : Vec<i32>) -> Fp<N, Integer>{
         let L = &self.l;
         let P = &self.p;
         let N_PRIMES = &self.n_primes;
@@ -238,12 +244,9 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
 
         while !finished_total[0] || !finished_total[1] {
             // Sample the point
-            let x = K::new(Integer::sample_uniform(&Integer::from(0), &(P-Integer::from(1))));
-            let compute_rhs = | x : K | {
-            ( (x.clone()*x.clone())*x.clone()  + ((ell.a_2.clone())*x.clone())*x.clone() )+ x 
-            };
+            let x = Fp::new(Integer::sample_uniform(&Integer::from(0), &(P-Integer::from(1))));
 
-            let s = compute_rhs(x.clone()).legendre_symbol() as i32;
+            let s = CSIDHInstance::compute_rhs(&x, &ell.a_2).legendre_symbol() as i32;
             if s == 0{
                 continue;
             }
@@ -273,14 +276,14 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
 
                 let li : Integer = s_sign[sign_index][i].clone();
 
-                let r_point = ell.scalar_mult_unsigned(k.clone()/(li.clone()), q_point.clone());
+                let r_point = ell.scalar_mult_unsigned(&k/(&li), q_point.clone());
 
                 if &r_point == &UnsignedProjPoint::infinite_point(){
                     // The point sampled had too low l-index
                     continue;
                 }
 
-                let (ell_, q_point_) = match Self::isogeny(&ell, &r_point, q_point.clone(), li.clone()){
+                let (ell_, q_point_) = match Self::isogeny_velu(&ell, &r_point, q_point.clone(), li.clone()){
                     Err(()) => {
                         // This should never happend
                         println!("Erreur");
@@ -304,7 +307,7 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
         ell.a_2
     }
 
-    pub fn sample_keys(self : &CSIDHInstance<K>, m : i32) -> (K, Vec<i32>){
+    pub fn sample_keys(self : &CSIDHInstance<Fp<N, Integer>>, m : i32) -> (Fp<N, Integer>, Vec<i32>){
         let mut rng = rand::thread_rng();
         let N_PRIMES = self.n_primes;
         let mut sk : Vec<i32> = vec!();
@@ -312,11 +315,11 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
             sk.push(rng.gen_range(-m, m) as i32);
         }
 
-        let pk = self.class_group_action(K::from_int(0), sk.clone());
+        let pk = self.class_group_action(Fp::from_int(0), sk.clone());
         (pk, sk)
     }
 
-    pub fn sample_keys_modif(self : &CSIDHInstance<K>, bound : i32) -> (K, Vec<i32>){
+    pub fn sample_keys_modif(self : &CSIDHInstance<Fp<N, Integer>>, bound : i32) -> (Fp<N, Integer>, Vec<i32>){
         let mut rng = rand::thread_rng();
         let N_PRIMES = self.n_primes;
         let mut sk : Vec<i32> = vec!();
@@ -330,7 +333,7 @@ impl<K : FiniteField<Integer=Integer>> CSIDHInstance<K>{
             }
         }
 
-        let pk = self.class_group_action(K::from_int(0), sk.clone());
+        let pk = self.class_group_action(Fp::from_int(0), sk.clone());
         (pk, sk)
     }
 
