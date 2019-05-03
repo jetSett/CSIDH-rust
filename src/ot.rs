@@ -1,4 +1,5 @@
 use crate::csidh::*;
+use elliptic_curve_algorithms::field::Field;
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -97,6 +98,41 @@ impl<'a> Bob<'a> {
 
 }
 
+struct CheatingBob<'a> {
+    pks: [PublicKey; 2],
+
+    pk: PublicKey,
+    sk: SecretKey,
+
+    inst : &'a CSIDHInstance<K>
+}
+
+impl<'a> CheatingBob<'a> {
+    fn step_1(inst : &'a CSIDHInstance<K>, pk_alices : [PublicKey; 2], gen_param : i32) -> CheatingBob<'a>{
+        let key = inst.sample_keys(gen_param);
+
+        let pk_fake_0 = inst.class_group_action(-pk_alices[0].clone(), key.1.clone());
+        let pk_fake_1 = inst.class_group_action(-pk_alices[1].clone(), key.1.clone());
+
+        CheatingBob{
+            pks: [pk_fake_0,pk_fake_1],
+
+            pk: key.0,
+            sk: key.1,
+
+            inst
+        }
+    }
+
+    fn step_2(&self) -> PublicKey{
+        self.pk.clone()
+    }
+
+    fn step_retrieve(&self, enc_mess : [u64; 2]) -> [u64; 2]{
+        [enc_mess[0] ^ hash_k(self.pks[0].clone()), enc_mess[1] ^ hash_k(self.pks[1].clone())]
+    }
+
+}
 
 pub fn oblivious_transfert_demo(gen_param : i32, s : [u64; 2]){
 
@@ -115,6 +151,7 @@ pub fn oblivious_transfert_demo(gen_param : i32, s : [u64; 2]){
     let k = rand::random::<bool>() as usize;
     let bob = Bob::step_1(&inst, gen_param, k);
 
+
     println!("Alice's public keys:\n{}\n{}\n", alice.pk0, alice.pk1);
     println!("Bob's public key:\n{}", bob.pk);
     println!("Secret wanted by Bob: {}\n", k);
@@ -122,6 +159,7 @@ pub fn oblivious_transfert_demo(gen_param : i32, s : [u64; 2]){
     println!("Step 2 -- Sharing secret");
 
     let shared_secret = bob.step_2([alice.pk0.clone(), alice.pk1.clone()]);
+
     println!("Shared secret:\n{}\n", shared_secret);
 
     let enc_mess = alice.step_2(s, shared_secret);
@@ -131,5 +169,38 @@ pub fn oblivious_transfert_demo(gen_param : i32, s : [u64; 2]){
     let retrieved = bob.step_3_retrieve(enc_mess);
 
     println!("Retrieved message: {}\nMessages at the beggining: {}, {}", retrieved, s[0], s[1]);
+
+}
+
+pub fn oblivious_transfert_fake(gen_param : i32, s : [u64; 2]){
+    let inst : CSIDHInstance<K> = CSIDHInstance::new(11,
+        Integer::from_str_radix("14841476269619", 10).unwrap(),
+        vec![Integer::from(3),Integer::from(5),Integer::from(7),
+                Integer::from(11),Integer::from(13),Integer::from(17),
+                Integer::from(19),Integer::from(23),Integer::from(29),
+                Integer::from(31),Integer::from(37)]
+    );
+    inst.check_well_defined();
+
+    println!("Step 1 -- Sampling keys");
+    let alice = Alice::step_1(&inst, gen_param);
+
+    println!("Alice's public keys:\n{}\n{}\n", alice.pk0, alice.pk1);
+
+    println!("Step 2 -- Sharing secret");
+
+    let cheatingBob = CheatingBob::step_1(&inst, [alice.pk0.clone(), alice.pk1.clone()], gen_param);
+
+    let shared_secret = cheatingBob.step_2();
+
+    println!("Key sent by cheating bob:\n{}\n", shared_secret);
+
+    let enc_mess = alice.step_2(s, shared_secret);
+    println!("Encrypted messages sent by Alice:\n{}\n{}\n", enc_mess[0], enc_mess[1]);
+
+    println!("Step 3 -- retrieving the message");
+    let retrieved = cheatingBob.step_retrieve(enc_mess);
+
+    println!("Retrieved messages by cheating Bob: {}, {}\nMessages at the beggining: {}, {}", retrieved[0], retrieved[1], s[0], s[1]);
 
 }

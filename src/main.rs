@@ -9,5 +9,6 @@ mod ot;
 
 fn main() {
     // ot::oblivious_transfert_demo(30, [42, 0]);
-    secret_sharing::secret_share_demo(100);
+    ot::oblivious_transfert_fake(30, [42, 0]);
+    //secret_sharing::secret_share_demo(100);
 }
